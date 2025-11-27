@@ -57,7 +57,6 @@ export default function AdminTablesPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'layout'>('grid');
-  const [editingTable, setEditingTable] = useState<Table | null>(null);
   
   // 드래그 상태
   const [dragging, setDragging] = useState<number | null>(null);

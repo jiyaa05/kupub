@@ -93,3 +93,11 @@ export function FullPageSpinner() {
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Layout (alias for PageLayout)
+// -----------------------------------------------------------------------------
+
+export function Layout({ children, ...props }: PageLayoutProps) {
+  return <PageLayout {...props}>{children}</PageLayout>;
+}

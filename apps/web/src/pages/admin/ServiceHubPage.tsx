@@ -524,15 +524,11 @@ function SessionCard({
   onDeleteSession: (sessionId: number) => Promise<void>;
   onOrderDetail: (order: Order) => void;
 }) {
-  const latestOrder = session.orders[0];
-  const hasOrders = session.orders.length > 0;
   const stageBadge = getStageBadge(stage);
   const disableActions = stage === 'done';
   const guestName = session.guestName?.trim() || '손님';
   const guestPhone = session.guestPhone?.trim() || '미기재';
   const tableLabel = session.tableCode || '미배정';
-  const paymentBadge = getPaymentBadge(latestOrder?.paymentStatus ?? 'NOT_REQUIRED');
-  const orderBadge = getOrderBadge(latestOrder?.status ?? 'NONE');
   const sessionTypeLabel =
     session.type === 'RESERVATION' ? '예약' : session.type === 'QR' ? 'QR' : '코드';
 
@@ -624,8 +620,6 @@ function SessionCard({
       ) : (
         <div className="space-y-3">
           {session.orders.map((order) => {
-            const orderPayment = getPaymentBadge(order.paymentStatus);
-            const orderStatus = getOrderBadge(order.status);
             return (
               <div key={order.id} className="border border-neutral-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-start justify-between flex-wrap gap-3">

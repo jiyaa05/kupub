@@ -6,7 +6,7 @@ export { QuantityControl, type QuantityControlProps } from './QuantityControl';
 export { Divider, type DividerProps } from './Divider';
 export { Spinner, type SpinnerProps } from './Spinner';
 export { Badge, type BadgeProps } from './Badge';
-export { PageLayout, PublicLayout, FullPageSpinner, type PageLayoutProps } from './Layout';
+export { PageLayout, PublicLayout, FullPageSpinner, Layout, type PageLayoutProps } from './Layout';
 export { Header, type HeaderProps } from './Header';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { AdminLayout } from './AdminLayout';

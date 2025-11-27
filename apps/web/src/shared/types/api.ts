@@ -101,7 +101,8 @@ export interface OnboardingSlide {
   imageUrl?: string;
   title: string;
   body: string;
-  order: number;
+  order?: number;
+  enabled?: boolean;
 }
 
 // -----------------------------------------------------------------------------

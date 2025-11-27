@@ -4,8 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Layout, Header, Button } from '@/shared/ui';
-import { useDepartment } from '@/features/department';
+import { PageLayout, Header, Button } from '@/shared/ui';
 import { useSession } from '@/features/session';
 import { apiClient } from '@/shared/api';
 
@@ -13,7 +12,6 @@ export default function CodeEntryPage() {
   const { dept } = useParams<{ dept: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { department } = useDepartment();
   const { startSession } = useSession();
 
   const [code, setCode] = useState('');
@@ -67,8 +65,7 @@ export default function CodeEntryPage() {
   };
 
   return (
-    <Layout>
-      <Header title="테이블 코드 입력" showBack />
+    <PageLayout header={<Header title="테이블 코드 입력" showBack />}>
 
       <div className="flex-1 p-6">
         <div className="max-w-sm mx-auto space-y-6">
@@ -154,7 +151,7 @@ export default function CodeEntryPage() {
           </div>
         </div>
       </div>
-    </Layout>
+    </PageLayout>
   );
 }
 

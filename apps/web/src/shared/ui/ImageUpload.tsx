@@ -3,7 +3,6 @@
 // =============================================================================
 
 import { useState, useRef } from 'react';
-import { apiClient } from '@/shared/api';
 
 interface ImageUploadProps {
   value?: string | null;

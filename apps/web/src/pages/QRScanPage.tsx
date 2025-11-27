@@ -4,13 +4,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Layout, Header, Button } from '@/shared/ui';
-import { useDepartment } from '@/features/department';
+import { PageLayout, Header, Button } from '@/shared/ui';
 
 export default function QRScanPage() {
   const { dept } = useParams<{ dept: string }>();
   const navigate = useNavigate();
-  const { department } = useDepartment();
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -104,8 +102,7 @@ export default function QRScanPage() {
   };
 
   return (
-    <Layout>
-      <Header title="QR 스캔" showBack />
+    <PageLayout header={<Header title="QR 스캔" showBack />}>
       
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         {error ? (
@@ -171,7 +168,7 @@ export default function QRScanPage() {
           animation: scan 2s ease-in-out infinite;
         }
       `}</style>
-    </Layout>
+    </PageLayout>
   );
 }
 

@@ -30,6 +30,7 @@ interface CartContextValue {
   includeTableFee: boolean;
   includeCorkage: boolean; // always false (no corkage)
   setIncludeCorkage: (value: boolean) => void; // no-op
+  markFeesPaid: () => void;
   addItem: (item: Omit<CartItem, 'quantity'>) => void;
   removeItem: (menuId: number) => void;
   updateQuantity: (menuId: number, quantity: number) => void;

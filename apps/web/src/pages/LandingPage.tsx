@@ -17,7 +17,7 @@ export default function LandingPage() {
 
   const flow = settings?.flow;
   // QR/코드 입장은 사용하지 않도록 예약만 허용
-  const entryModes: string[] = ['reservation'];
+  const _entryModes: string[] = ['reservation']; // eslint-disable-line @typescript-eslint/no-unused-vars
 
   const hasSeenOnboarding = storage.get<boolean>(`${STORAGE_KEYS.ONBOARDING_SEEN}_${dept}`);
 

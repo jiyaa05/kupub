@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiClient } from '@/shared/api';
-import { formatPrice, playNotificationSound, playSuccessSound } from '@/shared/utils';
+import { playNotificationSound, playSuccessSound } from '@/shared/utils';
 import { useWebSocket } from '@/shared/hooks/useWebSocket';
 import type { Order } from '@/shared/types/api';
 
