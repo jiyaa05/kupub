@@ -1,0 +1,40 @@
+### 주문 생성 (메뉴 기반)
+POST http://localhost:8080/api/cs/orders
+Content-Type: application/json
+
+{
+  "reservationId": 1,
+  "note": "덜 맵게요",
+  "items": [
+    { "menuId": 1, "quantity": 2 },
+    { "menuId": 2, "quantity": 1 }
+  ]
+}
+
+### 관리자 - 주문 목록
+GET http://localhost:8080/api/cs/admin/orders
+
+### 관리자 - 준비중 주문만
+GET http://localhost:8080/api/cs/admin/orders?status=preparing
+
+### 관리자 - 주문 아이템 보기
+GET http://localhost:8080/api/cs/admin/orders/1/items
+
+### 관리자 - 주문 완료 처리
+PATCH http://localhost:8080/api/cs/admin/orders/1
+Content-Type: application/json
+
+{
+  "status": "done"
+}
+
+### settings 변경
+PATCH http://localhost:8080/api/cs/admin/settings
+Content-Type: application/json
+
+{
+  "payment": {
+    "bankName": "토스뱅크",
+    "accountNumber": "123-456"
+  }
+}

@@ -1,0 +1,485 @@
+# kupub – 멀티 학과 주점/행사 운영 플랫폼
+
+이 프로젝트는 대학교 축제나 학과 주점처럼 **짧은 기간 운영되는 공간**을 여러 학과가 **각자 독립적으로** 운영할 수 있게 하는 멀티테넌트 플랫폼입니다.  
+목표는 **“한 번 만들어 놓으면, 이후에는 코드 안 건드리고 UI로 학과를 추가해서 쓰는 것”** 입니다.
+
+이 README는 사람/AI 모두가 **코드를 읽기 전에 전체 구조와 흐름을 한 번에 파악**할 수 있도록 작성되었습니다.
+
+---
+
+## 1. 고수준 개요
+
+- 공개 웹(손님용): `/{dept}`  
+  예) `/cs`, `/electrical`
+- 관리자 웹(학과 운영진): `/admin/{dept}`  
+  예) `/admin/cs`
+- 플랫폼 운영자(최상위 관리자): `/super-admin`
+  - 학과 생성/삭제(cascade)/활성화 관리
+  - 관리자 계정 생성/삭제/비밀번호 변경
+  - API: `/api/platform/**` (SUPER_ADMIN 권한 필요)
+
+핵심 도메인:
+
+- **Department**: 학과(테넌트)
+- **Settings**: 학과별 설정(브랜딩, 예약/결제/가격/플로우 등)
+- **Table**: 매장 테이블(코드·위치·정원)
+- **Reservation / GuestSession**: 손님 예약 및 실제 입장 세션
+- **Order**: 세션/테이블별 주문 + 결제 상태
+
+---
+
+## 2. 레포 구조
+
+.
+├─ apps/
+│  └─ web/                     # Vite + React SPA (공개 + 관리자 UI)
+│      ├─ src/app/             # 라우팅, 전역 provider
+│      ├─ src/pages/           # 페이지 단위 화면
+│      │   ├─ *.tsx            # 공개 페이지 (손님용)
+│      │   └─ admin/*.tsx      # 관리자 페이지
+│      ├─ src/features/        # 도메인 단위 훅/컨텍스트 (auth, cart, department, ...)
+│      └─ src/shared/          # 공통 UI, api client, hooks, utils, 타입 정의
+├─ services/
+│  └─ api/                     # Spring Boot REST API
+│      ├─ src/main/java/com/kupub/api/
+│      │   ├─ auth/            # 로그인, JWT 발급/검증
+│      │   ├─ department/      # 학과/설정
+│      │   ├─ menu/            # 메뉴/카테고리
+│      │   ├─ order/           # 주문/영수증
+│      │   ├─ reservation/     # 예약 엔티티
+│      │   ├─ session/         # GuestSession (실제 입장 세션)
+│      │   ├─ table/           # 테이블 배치/관리
+│      │   ├─ notification/    # WebSocket + 주방/관리자 알림
+│      │   └─ config/          # Security/WebSocket/Static 설정
+│      └─ src/main/resources/  # application.yml, schema, 초기 데이터
+└─ packages/
+   └─ ui/                      # (향후) 공통 UI 패키지 용도---
+
+## 3. 런타임 아키텍처
+
+### 3.1 프런트엔드 (`apps/web`)
+
+- **Tech**: Vite + React + React Router
+- 라우트 정의: `src/app/routes.tsx`
+  - 공개 라우트: `/:dept/...`
+    - `/` (Landing), `/onboarding`, `/reserve`, `/menu`, `/cart`, `/payment`, `/waiting`, `/complete`, `/kitchen` 등
+  - 관리자 라우트: `/admin/:dept/...`
+    - `dashboard` – 실시간 주문/통계 대시보드  
+    - `service-hub` – **예약/주문 관리 (손님 단위 카드)**  
+    - `menus` – 메뉴/품절/카테고리 관리  
+    - `tables` – 테이블 생성 + 배치도 + QR 관리  
+    - `stats` – 매출/시간대/메뉴 통계  
+    - `settings` – 학과별 설정(브랜딩, 플로우, 예약, 결제, 가격, 온보딩)
+
+#### 3.1.1 공통 레이아웃
+
+- `AdminLayout` (`src/shared/ui/AdminLayout.tsx`)
+  - 좌측 사이드바: 대시보드, **예약/주문 관리**, 메뉴, 테이블, 통계, 설정
+  - 상단 헤더:
+    - 검색: 주문번호/이름/전화번호 검색 시 `예약/주문 관리` 화면으로 이동 (`/admin/{dept}/service-hub?search=...`)
+    - 알림: 최근 결제 대기 주문 5개를 보여주는 드롭다운
+    - 사용자 프로필/로그아웃
+
+#### 3.1.2 상태/컨텍스트 & API 클라이언트
+
+- `AuthProvider` (`src/features/auth/context.tsx`)
+  - 로컬스토리지 키: `kupub_admin_auth`
+  - 구조:
+
+   
+    {
+      user: { username, departmentId, departmentSlug, role },
+      accessToken: string,
+      refreshToken: string
+    }
+      - `login()` → `/api/auth/login` 호출 후 위 구조 저장
+  - `logout()` → 저장된 값 제거
+
+- `apiClient` (`src/shared/api/client.ts`)
+
+  - 모든 HTTP 호출은 `ApiResponse<T>` 래퍼를 기대:
+
+   
+    interface ApiResponse<T> {
+      data: T | null;
+      error: { code: string; message: string } | null;
+    }
+      - `Authorization: Bearer {accessToken}` 자동 첨부
+  - 401 응답 발생 시 `/api/auth/refresh` 호출로 access token 자동 재발급
+  - 환경 변수:
+    - `VITE_API_URL` – API 베이스 URL (예: `http://localhost:8080`)
+    - `VITE_WS_URL` – WebSocket URL(선택, 없으면 API_URL 기반으로 `/ws` 추론)
+
+- `useWebSocket` (`src/shared/hooks/useWebSocket.ts`)
+
+  - SockJS + STOMP 기반
+  - 엔드포인트: `VITE_WS_URL` 또는 `{origin}/ws`
+  - 구독: `/topic/{dept}/orders`
+    - `NEW_ORDER`, `ORDER_STATUS_CHANGED`, `PAYMENT_CONFIRMED` 타입 이벤트 처리
+  - `AdminDashboardPage`, `AdminLayout` 알림, `ServiceHubPage` 에서 사용
+
+#### 3.1.3 예약/주문 관리 페이지 (핵심 관리자 화면)
+
+파일: `src/pages/admin/ServiceHubPage.tsx`
+
+- **목적**: 한 **세션 카드**에서 손님 단위로
+  - 손님 정보 확인 (이름, 인원, 연락처, 테이블)
+  - 결제 상태 변경 (결제 대기 → 확인됨/실패/불필요)
+  - 테이블 배정/해제
+  - 주문 상태/결제 상태 변경
+  - 퇴장 처리  
+  를 모두 처리할 수 있도록 하는 것.
+
+- 데이터 소스:
+
+  - `GET /api/{dept}/admin/sessions`
+  - `GET /api/{dept}/admin/tables`
+  - `GET /api/{dept}/admin/orders`
+
+  프런트에서 `session.id` 기준으로 주문을 그룹화해 `SessionWithOrders` 로 사용합니다.
+
+- 스테이지 구분(`StageFilter`):
+
+  - `all` – 전체 손님
+  - `payment` – 주문 중 `paymentStatus = PENDING` 존재
+  - `assignment` – 결제 완료 + `tableId` 없음
+  - `active` – 세션 `ACTIVE` + `tableId` 있음
+  - `done` – 그 외 (퇴장 등)
+
+- 검색:
+
+  - 손님 이름, 연락처, 세션 ID, 테이블 코드, 주문 ID, 메뉴명을 모두 대상에 포함해서 텍스트 매칭
+
+- 카드 구성:
+
+  - **헤더**: 세션 ID, 손님 이름/인원, 연락처, 테이블 코드, 세션 타입/스테이지 배지
+  - **본문 1 – 결제 & 테이블**:
+    - 가장 최근 주문의 `paymentStatus` 를 보여주는 셀렉트 박스
+    - 테이블 배정 셀렉트 박스 (이미 다른 ACTIVE 세션이 점유 중인 테이블은 제외)
+    - 세션 상태에 따라 퇴장 처리 버튼/상태 텍스트
+  - **본문 2 – 주문 리스트**:
+    - 각 주문별 요약(메뉴 2개 + “외 n개”)
+    - 주문 상태 셀렉트 (`PENDING`, `PREPARING`, `DONE`, `CANCELLED`)
+    - 결제 상태 셀렉트 (`PENDING`, `CONFIRMED`, `FAILED`, `NOT_REQUIRED`)
+    - 상세 모달 버튼
+
+- 주요 액션에 사용되는 API:
+
+  - `PATCH /api/{dept}/admin/orders/{orderId}` – `status`, `paymentStatus` 변경
+  - `PATCH /api/{dept}/admin/sessions/{sessionId}/assign-table` – 테이블 배정/해제
+  - `PATCH /api/{dept}/admin/sessions/{sessionId}/close` – 세션 종료
+
+---
+
+## 4. 백엔드 (`services/api`)
+
+### 4.1 공통
+
+- **Tech**: Spring Boot 3, Spring Web, Spring Data JPA, Spring Security, WebSocket(STOMP)
+- DB: MySQL (개발용 H2 지원)
+- 모든 REST 응답은 `ApiResponse<T>` 래퍼 사용:
+
+public class ApiResponse<T> {
+    private T data;
+    private ApiError error;
+}프런트의 `apiClient`는 항상 이 래퍼를 기대하며, `error` 가 있으면 에러로 처리합니다.
+
+### 4.2 멀티테넌시 설계
+
+- 주요 엔티티: `departmentId` 필드를 통해 소속 학과 구분
+- 모든 학과 관련 엔드포인트는 URL에 `{dept}` (slug)를 포함
+  - 컨트롤러에서 `DepartmentService.getBySlug(deptSlug)` 로 `departmentId` 로 변환
+- 서비스 계층에서 **학과 권한 체크**를 수행:
+  - `OrderService.getOrderForDepartment(deptId, orderId)`
+  - `SessionService.assignTable(deptId, sessionId, tableId)` (세션/테이블 모두 같은 학과인지 검증)
+  - `SessionService.closeSession(deptId, sessionId)`
+  - `TableService.updateTable(deptId, tableId, ...)`, `TableService.deleteTable(deptId, tableId)`
+  - `AdminMenuController` 내 메뉴/카테고리 CRUD 시 department 일치 여부 검증
+
+### 4.3 인증/권한
+
+- JWT 발급: `AuthController` (`/api/auth`)
+  - `POST /api/auth/login` – 로그인
+  - `POST /api/auth/refresh` – access token 재발급
+  - `POST /api/auth/logout` – refresh token 폐기
+- 토큰 구조:
+  - `sub = username`
+  - 클레임: `userId`, `departmentId`, `role`, `type = access|refresh`
+- `JwtAuthenticationFilter`
+  - `Authorization: Bearer ...` 헤더를 파싱해 `ROLE_{role}` 권한 부여
+- `SecurityConfig`
+  - CSRF off, stateless 세션
+  - 접근 제어:
+    - 공개:
+      - `/api/auth/**`
+      - `/api/public/**`
+      - `/api/{dept}/settings`
+      - `/api/{dept}/menus`
+      - `/api/{dept}/orders`, `/api/{dept}/orders/*`
+      - `/api/{dept}/reservations`
+      - `/api/{dept}/sessions/**`
+      - `/uploads/**`
+    - 관리자: `/api/{dept}/admin/**` – 인증 필요
+    - 플랫폼: `/api/platform/**` – `hasRole("SUPER_ADMIN")`
+
+### 4.4 주요 도메인
+
+#### 4.4.1 Department & Settings
+
+- 엔티티: `Department`, `DepartmentSettings`
+- 퍼블릭 설정 조회:
+  - `GET /api/{dept}/settings` → `PublicSettingsController`
+  - 응답: `department` 정보 + `settings` (Map<String, Object>)
+- 관리자 설정:
+  - `GET /api/{dept}/admin/settings`
+  - `PATCH /api/{dept}/admin/settings` – JSON 전체 교체(서비스에서 머지)
+  - 프런트 `AdminSettingsPage` 에서 브랜딩/플로우/예약/결제/가격/온보딩 슬라이드 관리
+
+#### 4.4.2 테이블
+
+- 엔티티: `DepartmentTable`
+- 컨트롤러: `AdminTableController` – `/api/{dept}/admin/tables`
+  - `GET` – 학과 테이블 목록
+  - `POST` – 테이블 생성 (코드 중복 검사)
+  - `PATCH /{id}` – 코드/이름/정원/좌표/활성 여부 수정 (학과 검증)
+  - `DELETE /{id}` – 삭제 (학과 검증)
+  - `PUT /layout` – 배치도 일괄 저장
+- 프런트: `AdminTablesPage`
+  - **Grid 뷰**: 카드 리스트 + QR 미리보기, 활성/비활성 토글
+  - **Layout 뷰**: 드래그 가능한 배치도, QR 일괄 다운로드
+
+#### 4.4.3 세션/예약
+
+- 엔티티: `GuestSession`
+  - 타입: `SessionType = RESERVATION | QR | CODE`
+  - 상태: `SessionStatus = ACTIVE | CLOSED`
+  - 필드: `reservationId`, `tableId`, `sessionCode`, `guestName`, `guestPhone`, `people`, `createdAt`, `closedAt`
+- 컨트롤러: `AdminSessionController` – `/api/{dept}/admin/sessions`
+  - `GET` – 활성 세션 목록 (`all=true` 시 전체)
+  - `PATCH /{id}/assign-table` – 테이블 배정/해제
+    - 동일 학과 검증 + 동일 테이블에 다른 ACTIVE 세션 존재 여부 검사
+    - 해당 세션의 모든 주문의 `tableId`도 함께 업데이트
+  - `PATCH /{id}/close` – 세션 종료
+- 퍼블릭 입장 흐름은 `PublicSessionController` + `Reservation`/`StartSessionRequest` 를 통해 생성됨.
+
+#### 4.4.4 주문
+
+- 엔티티: `Order`, `OrderItem`
+  - 금액 구성: `subtotal`, `tableFee`, `corkage`, `discount`, `totalPrice`
+  - 상태:
+    - `OrderStatus = PENDING | PREPARING | DONE | CANCELLED`
+    - `PaymentStatus = PENDING | CONFIRMED | FAILED | NOT_REQUIRED`
+  - 연결: `departmentId`, `sessionId`, `tableId`, `reservationId`, `guestPhone`
+- 서비스: `OrderService`
+  - `createOrder(deptId, deptSlug, OrderCreateRequest)`
+    - 세션/예약에 연결 후 가격 계산(`PricingService`)
+    - 새 주문 WebSocket 알림 전송 (`NotificationService.notifyNewOrder`)
+  - `updateStatus(orderId, status, deptSlug?)` – 상태 변경 + 주방 알림
+  - `updatePaymentStatus(orderId, paymentStatus, deptSlug?)`
+    - 결제 확인 시 주문 상태를 `PREPARING` 으로 자동 전환
+    - 결제 확인 알림 + 주방 알림 + SMS 영수증 전송 시도
+  - `toOrderDtos(List<Order>)` – N+1 없이 아이템/테이블 코드 포함 DTO 변환
+  - `getOrderForDepartment(deptId, orderId)` – 학과 권한 검증
+- 컨트롤러:
+  - `PublicOrderController` – `/api/{dept}/orders` (손님용 생성/상태 조회)
+  - `AdminOrderController` – `/api/{dept}/admin/orders` (관리자 목록/수정/영수증 발송)
+
+#### 4.4.5 메뉴
+
+- 엔티티: `Menu`, `MenuCategory`
+- 퍼블릭 메뉴 조회: `GET /api/{dept}/menus`
+- 관리자:
+  - `AdminMenuController` – `/api/{dept}/admin/menus`
+    - 메뉴 CRUD + 카테고리 CRUD
+    - 모든 연산 시 해당 `departmentId` 일치 여부 검증
+
+#### 4.4.6 알림 / WebSocket
+
+- 설정: `WebSocketConfig`
+  - STOMP endpoint: `/ws` (`SockJS` 사용)
+  - 브로커 prefix: `/topic`
+- 서비스: `NotificationService`
+  - `/topic/{dept}/orders` 로 다음 이벤트 브로드캐스트:
+    - `NEW_ORDER`
+    - `ORDER_STATUS_CHANGED`
+    - `PAYMENT_CONFIRMED`
+  - 주방 알림도 별도 topic 으로 전송 (주방 화면용)
+- 프런트:
+  - `useWebSocket` 훅에서 `/topic/{dept}/orders` 구독
+  - `AdminDashboardPage`, `AdminLayout` 알림, `ServiceHubPage` 가 이 훅을 사용해 실시간 갱신
+
+---
+
+## 5. 학과별 설정(Department Settings) 구조
+
+백엔드에서는 학과별 설정을 JSON으로 저장하고, 프런트에서는 타입 안전하게 사용합니다  
+(`services/api/department/*`, `apps/web/src/shared/types/api.ts` 참고).
+
+예시 구조:
+
+{
+  "branding": {
+    "primaryColor": "#6366F1",
+    "secondaryColor": "#F3F4F6",
+    "backgroundColor": "#FFFFFF",
+    "logoUrl": null
+  },
+  "flow": {
+    "entryModes": ["reservation", "qr", "code"],
+    "showOnboarding": true,
+    "requireReservationForFirstOrder": false,
+    "allowAdditionalOrder": true,
+    "showPaymentPage": true
+  },
+  "reservation": {
+    "startTime": "18:00",
+    "endTime": "23:00",
+    "intervalMinutes": 30,
+    "durationMinutes": 60,
+    "maxPeople": 6
+  },
+  "payment": {
+    "method": "transfer",
+    "bankName": "",
+    "accountNumber": "",
+    "accountHolder": ""
+  },
+  "pricing": {
+    "tableFee": 0,
+    "corkage": 0,
+    "discounts": []
+  },
+  "onboarding": [],
+  "reservationClosed": []
+}프런트의 `AdminSettingsPage` 에서 이 구조에 맞게 편집하고, `PATCH /api/{dept}/admin/settings` 로 저장합니다.
+
+---
+
+## 6. 로컬 개발 방법
+
+### 6.1 요구 사항
+
+- Node.js 20+
+- Java 17 (JDK)
+- MySQL (또는 H2 로 개발 가능)
+
+### 6.2 환경 변수
+
+프런트(`apps/web/.env.local` 예시):
+
+VITE_API_URL=http://localhost:8080
+VITE_WS_URL=http://localhost:8080/ws    # 선택 (없으면 API_URL 기반으로 추론)백엔드(`services/api/src/main/resources/application-local.yml` 참고):
+
+- DB 접속 정보, JWT secret 등을 설정
+
+### 6.3 실행
+
+# 백엔드
+cd services/api
+./gradlew bootRun   # 기본 8080 포트
+
+# 프런트
+cd ../../apps/web
+npm install
+npm run dev         # 기본 5173 포트
+
+브라우저에서:
+
+- 손님용: `http://localhost:5173/cs`
+- 관리자용: `http://localhost:5173/admin/cs`
+- 총관리자: `http://localhost:5173/super-admin` (SUPER_ADMIN 계정 필요)
+
+---
+
+## 7. 프로덕션 배포
+
+### 7.1 필요한 환경변수
+
+```bash
+# 데이터베이스
+DB_HOST=your-mysql-host
+DB_USER=kupub
+DB_PASS=your-secure-password
+
+# JWT (최소 32자 이상의 시크릿 키)
+JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters
+
+# Spring Profile
+SPRING_PROFILES_ACTIVE=prod
+```
+
+### 7.2 빌드
+
+```bash
+# 백엔드
+cd services/api
+./gradlew bootJar
+# 결과: build/libs/api-0.0.1-SNAPSHOT.jar
+
+# 프론트엔드
+cd apps/web
+npm run build
+# 결과: dist/ 디렉토리
+```
+
+### 7.3 실행
+
+```bash
+# 백엔드
+java -jar api-0.0.1-SNAPSHOT.jar
+
+# 프론트엔드 - Nginx 등 정적 파일 서버로 dist/ 제공
+```
+
+### 7.4 Nginx 설정 예시
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    # 프론트엔드 정적 파일
+    location / {
+        root /path/to/dist;
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # API 프록시
+    location /api {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    # WebSocket 프록시
+    location /ws {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # 업로드 파일
+    location /uploads {
+        proxy_pass http://localhost:8080;
+    }
+}
+```
+
+---
+
+## 8. 이 README를 읽는 AI/사람을 위한 요약
+
+- **테넌트 단위**: `Department(deptSlug)` 로 모든 요청을 구분하고, 서비스 계층에서 `departmentId` 일치 여부를 적극적으로 검증합니다.
+- **데이터 흐름**:
+  1. 손님이 `{dept}` 공개 페이지에서 예약/입장(세션 생성)
+  2. 테이블/세션/주문이 백엔드에 생성되고, `NotificationService` 를 통해 관리자/주방에 WebSocket 이벤트가 발송됩니다.
+  3. 관리자는 `/admin/{dept}` 에서 **예약/주문 관리** 화면 하나로 결제→테이블→주문→퇴장 순서를 처리합니다.
+- **프런트와 백엔드의 계약**:
+  - 모든 REST 응답은 `ApiResponse<T>` 형식
+  - WebSocket topic 은 `/topic/{dept}/orders` 를 중심으로 설계
+  - 타입 정의는 `apps/web/src/shared/types/api.ts` 에 정리되어 있으며, 백엔드 DTO와 1:1 매핑됩니다.
+
+이 정도 정보를 가지고 있으면, 어떤 AI/개발자든지 **새 기능 위치 찾기, 버그 디버깅, API/UX 변경**을 꽤 빠르게 시작할 수 있습니다.  
+보다 구체적인 구현은 각 파일 상단의 주석(`// =============================================================================`)과 이 README에서 언급한 경로를 함께 참고하면 됩니다.
+*** End Patch

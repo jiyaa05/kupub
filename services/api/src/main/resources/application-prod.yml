@@ -1,0 +1,46 @@
+# src/main/resources/application-prod.yml
+# Production 환경 설정
+# 필요한 환경변수: DB_HOST, DB_USER, DB_PASS, JWT_SECRET
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/kupub?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USER:kupub}
+    password: ${DB_PASS}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# JWT 설정 (반드시 환경변수로 설정)
+jwt:
+  secret: ${JWT_SECRET}
+  access-expire-ms: 14400000   # 4시간
+  refresh-expire-ms: 604800000 # 7일
+
+logging:
+  level:
+    root: WARN
+    com.kupub.api: INFO
+
+app:
+  upload-dir: ${UPLOAD_DIR:/var/app/uploads}
+
+# 서버 설정
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /
+
+# CORS 설정 (프로덕션용: 특정 도메인만 허용)
+# 환경변수로 설정: CORS_ORIGINS=https://your-domain.com
+cors:
+  origins: ${CORS_ORIGINS:*}
