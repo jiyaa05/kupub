@@ -405,7 +405,7 @@ function StatCard({ label, value, accent, suffix }: { label: string; value: numb
 type BadgeInfo = { text: string; className: string };
 type OrderStatusDisplay = OrderStatus | 'NONE';
 
-function getPaymentBadge(status: PaymentStatus | 'NOT_REQUIRED'): BadgeInfo {
+function _getPaymentBadge(status: PaymentStatus | 'NOT_REQUIRED'): BadgeInfo {
   return (
     {
       PENDING: { text: '결제 대기', className: 'bg-amber-100 text-amber-700' },
@@ -416,7 +416,7 @@ function getPaymentBadge(status: PaymentStatus | 'NOT_REQUIRED'): BadgeInfo {
   );
 }
 
-function getOrderBadge(status: OrderStatusDisplay): BadgeInfo {
+function _getOrderBadge(status: OrderStatusDisplay): BadgeInfo {
   return (
     {
       NONE: { text: '주문 없음', className: 'bg-neutral-100 text-neutral-600' },
@@ -427,6 +427,10 @@ function getOrderBadge(status: OrderStatusDisplay): BadgeInfo {
     }[status] ?? { text: status, className: 'bg-neutral-100 text-neutral-600' }
   );
 }
+
+// Re-export for potential future use
+void _getPaymentBadge;
+void _getOrderBadge;
 
 function getStageBadge(stage: StageFilter): BadgeInfo {
   return (

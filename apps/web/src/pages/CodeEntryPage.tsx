@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout, Header, Button } from '@/shared/ui';
 import { useSession } from '@/features/session';
-import { apiClient } from '@/shared/api';
 
 export default function CodeEntryPage() {
   const { dept } = useParams<{ dept: string }>();
@@ -39,26 +38,22 @@ export default function CodeEntryPage() {
 
     try {
       // 세션 시작
-      const response = await apiClient.post(`/api/${dept}/sessions/start`, {
+      const session = await startSession({
         type: 'CODE',
         sessionCode: code.toUpperCase(),
         guestName: guestName || '손님',
         people,
       });
 
-      if (response.data) {
-        // 세션 저장
-        startSession(response.data);
+      if (session) {
         // 메뉴 페이지로 이동
         navigate(`/${dept}/menu`);
-      }
-    } catch (err: any) {
-      console.error('Session start failed:', err);
-      if (err.response?.data?.error?.message) {
-        setError(err.response.data.error.message);
       } else {
         setError('세션을 시작할 수 없습니다. 테이블 코드를 확인해주세요.');
       }
+    } catch (err) {
+      console.error('Session start failed:', err);
+      setError('세션을 시작할 수 없습니다. 테이블 코드를 확인해주세요.');
     } finally {
       setLoading(false);
     }
