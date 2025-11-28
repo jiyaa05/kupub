@@ -4,6 +4,8 @@
 
 import { useState, useRef } from 'react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 interface ImageUploadProps {
   value?: string | null;
   onChange: (url: string | null) => void;
@@ -50,15 +52,29 @@ export function ImageUpload({
       formData.append('file', file);
       formData.append('category', category);
 
-      const response = await fetch('/api/upload/image', {
+      // 인증 토큰 가져오기
+      const authData = localStorage.getItem('kupub_admin_auth');
+      const token = authData ? JSON.parse(authData).accessToken : null;
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/upload/image`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
       const data = await response.json();
 
       if (data.data?.url) {
-        onChange(data.data.url);
+        // 이미지 URL도 API 서버 기준으로 변환
+        const imageUrl = data.data.url.startsWith('http') 
+          ? data.data.url 
+          : `${API_BASE_URL}${data.data.url}`;
+        onChange(imageUrl);
       } else {
         setError(data.error?.message || '업로드 실패');
       }
